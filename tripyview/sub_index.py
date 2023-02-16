@@ -25,7 +25,7 @@ def load_index_fesom2(mesh, data, box_list, boxname=None, do_harithm='wmean',
     index_list  = []
     idxin_list  = []
     cnt         = 0
-    
+
     #___________________________________________________________________________
     # loop over box_list
     for box in box_list:
@@ -33,11 +33,11 @@ def load_index_fesom2(mesh, data, box_list, boxname=None, do_harithm='wmean',
         if not isinstance(box, shp.Reader):
             if len(box)==2: boxname, box = box[1], box[0]
             if box is None or box=='global': boxname='global'
-        
+
         #_______________________________________________________________________
         # compute  mask index
         idx_IN=do_boxmask(mesh,box)
-        
+
         #_______________________________________________________________________
         # selected points in xarray dataset object and  average over selected 
         # points
@@ -47,8 +47,8 @@ def load_index_fesom2(mesh, data, box_list, boxname=None, do_harithm='wmean',
         elif 'elem' in data_dims():    
             #index_list.append( do_horiz_arithmetic(data.sel(nod2=idx_IN), do_harithm, 'elem'))
             index = do_horiz_arithmetic(data.sel(nod2=idx_IN), do_harithm, 'elem')
-            
-            
+
+
         if   'nz1' in data.dims and do_harithm is not None:
             index = do_depth_arithmetic(index, do_zarithm, 'nz1')
         elif 'nz'  in data.dims and do_harithm is not None:        
@@ -56,26 +56,23 @@ def load_index_fesom2(mesh, data, box_list, boxname=None, do_harithm='wmean',
         index_list.append(index)
         idxin_list.append(idx_IN)
         del(index)
-        
+
         #_______________________________________________________________________
         if do_compute: index_list[cnt] = index_list[cnt].compute()
-        
+
         #_______________________________________________________________________
-        vname = list(index_list[cnt].keys())            
+        vname = list(index_list[cnt].keys())
         if boxname is not None: 
             index_list[cnt][vname[0]].attrs['boxname'] = boxname
         elif isinstance(box, shp.Reader):
-            index_list[cnt][vname[0]].attrs['boxname'] = os.path.basename(box.shapeName).replace('_',' ')  
-        elif boxname is None or boxname=='global': 
+            index_list[cnt][vname[0]].attrs['boxname'] = os.path.basename(box.shapeName).replace('_',' ')
+        else:
             index_list[cnt][vname[0]].attrs['boxname'] = 'global'
-        
+
         #_______________________________________________________________________
         cnt = cnt + 1
     #___________________________________________________________________________
-    if do_outputidx:
-        return(index_list, idxin_list)
-    else:
-        return(index_list)
+    return (index_list, idxin_list) if do_outputidx else index_list
 
 
     
@@ -84,68 +81,67 @@ def load_index_fesom2(mesh, data, box_list, boxname=None, do_harithm='wmean',
 #_______________________________________________________________________________
 def plot_index_region(mesh, idx_IN, box_list, which='hard'):
     from matplotlib.tri import Triangulation
-    
+
     #___________________________________________________________________________
     # make triangulation
     tri       = Triangulation(np.hstack(( mesh.n_x, mesh.n_xa )),
                               np.hstack(( mesh.n_y, mesh.n_ya )),
                               np.vstack(( mesh.e_i[mesh.e_pbnd_0, :], mesh.e_ia ))) 
-    
+
     #___________________________________________________________________________
     # plot basemesh
     plt.figure()
     #plt.triplot(tri,linewidth=0.2)
-    
+
     nidx = len(idx_IN)
-    for ii in range(0,nidx):
+    for ii in range(nidx):
         isnan     = idx_IN[ii]
         aux_isnan = np.hstack((isnan, isnan[mesh.n_pbnd_a]))
         if   which == 'soft': isnan_tri = np.any(aux_isnan[tri.triangles], axis=1)
         elif which == 'hard': isnan_tri = np.all(aux_isnan[tri.triangles], axis=1)
         elif which == 'mid' : isnan_tri = (np.sum(aux_isnan[tri.triangles], axis=1)>1)
         plt.triplot(tri.x, tri.y, tri.triangles[isnan_tri,:], linewidth=0.2)
-        
+
     #___________________________________________________________________________
     # loop over box_list
     for box in box_list:
         #_______________________________________________________________________
         # a rectangular box is given --> translate into shapefile object
-        if  (isinstance(box,list) or isinstance(box, np.ndarray)) and len(box)==4: 
+        if (isinstance(box, (list, np.ndarray))) and len(box) == 4: 
             px     = [box[0], box[1], box[1], box[0], box[0]]
             py     = [box[2], box[2], box[3], box[3], box[2]]
             p      = Polygon(list(zip(px,py)))
             plt.plot(*p.exterior.xy,color='k', linewidth=1.0)
-            
-        # a polygon as list or ndarray is given --> translate into shape file object
+
         elif isinstance(box,list) and len(box)==2: 
             px, py = box[0], box[1]  
             p      = Polygon(list(zip(px,py)))  
             plt.plot(*p.exterior.xy,color='k', linewidth=1.0)
-            
+
         elif isinstance(box, np.ndarray): 
             if box.shape[0]==2:
                 px, py = list(box[0,:]), list(box[1,:])
                 p      = Polygon(list(zip(px,py)))
                 plt.plot(*p.exterior.xy,color='k', linewidth=1.0)
-                
+
             else:
-                raise  ValueError(' ndarray box has wrong format must be [2 x npts], yours is {}'.format(str(box.shape)))
-            
-        # a polygon as shapefile or shapefile collection is given
+                raise ValueError(
+                    f' ndarray box has wrong format must be [2 x npts], yours is {str(box.shape)}'
+                )
+
         elif (isinstance(box, (Polygon, MultiPolygon))):
             if   isinstance(box, Polygon): plt.plot(*box.exterior.xy,color='k', linewidth=1.0)
-                
+
             elif isinstance(box, MultiPolygon):
                 for p in box: plt.plot(*p.exterior.xy,color='k', linewidth=1.0)
-        
+
         elif (isinstance(box, shp.Reader)):
             for shape in box.shapes(): 
                 p      = Polygon(shape.points)
                 plt.plot(*p.exterior.xy,color='k', linewidth=1.0)
-        # otherwise
         else:
             raise ValueError('the given box information to compute the index has no valid format')
-            
+
     #___________________________________________________________________________
     return
 
@@ -159,67 +155,59 @@ def plot_index_z(index_list, label_list, box_list, figsize=[12,8], n_rc=[1,1],
     #___________________________________________________________________________
     # make matrix with row colum index to know where to put labels
     rowlist = np.zeros((n_rc[0],n_rc[1]))
-    collist = np.zeros((n_rc[0],n_rc[1]))       
-    for ii in range(0,n_rc[0]): rowlist[ii,:]=ii
-    for ii in range(0,n_rc[1]): collist[:,ii]=ii
+    collist = np.zeros((n_rc[0],n_rc[1]))
+    for ii in range(n_rc[0]): rowlist[ii,:]=ii
+    for ii in range(n_rc[1]): collist[:,ii]=ii
     rowlist = rowlist.flatten()
     collist = collist.flatten()
-    
+
     #___________________________________________________________________________
     # create figure and axes
     fig, ax = plt.subplots(n_rc[0],n_rc[1], figsize=figsize, sharex=False, sharey=True,
                         gridspec_kw=dict(left=0.1, bottom=0.1, right=0.90, top=0.90, wspace=0.10, hspace=0.3,),
                                     )
-    if isinstance(ax, np.ndarray): ax = ax.flatten()
-    else:                          ax = [ax] 
+    ax = ax.flatten() if isinstance(ax, np.ndarray) else [ax]
     nax = len(ax)
-    
+
     if not isinstance(index_list, list): index_list = [index_list]
-    
+
     #___________________________________________________________________________
     nbi = len(box_list)
     ndi = len(index_list)
     # loop over boxes definitions
-    for bi in range(0,len(box_list)):
+    for bi in range(len(box_list)):
         
         # loop over data
-        for di in range(0,ndi):
+        for di in range(ndi):
                 
             vname = list(index_list[di][bi].keys())
             val   = index_list[di][bi][vname[0]].values.copy()
             val, str_rescale= do_rescale_data(val, do_rescale)
-            
+
             cname = list(index_list[di][bi].coords)
             dep = np.abs(index_list[di][bi].coords[cname[0]].values)
-            
+
             linestyle = 'solid'
-            if linestyle_list is not None: 
-                if (not linestyle_list[di])==False: linestyle =  linestyle_list[di]
-                
+            if linestyle_list is not None and linestyle_list[di]:
+                linestyle =  linestyle_list[di]
             if isinstance(linewidth, (list, np.ndarray)):
                 lwidth = linewidth[di]
             else:
                 lwidth = linewidth
-        
+
             #ax[bi].plot(val,dep, color='k', linewidth=lwidth*1.05)
             if linecolor_list is None: 
-                
+
                 ax[bi].plot(val,dep, label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
-            else:
-                if isinstance(linecolor_list[di], (list, np.ndarray)):
-                    if len(linecolor_list[di])==0:
-                        ax[bi].plot(val,dep, label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
-                    else:
-                        ax[bi].plot(val,dep, color=linecolor_list[di], 
-                                label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
-                elif isinstance(linecolor_list[di], str):
+            elif isinstance(linecolor_list[di], (list, np.ndarray)):
+                if len(linecolor_list[di])==0:
+                    ax[bi].plot(val,dep, label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
+                else:
                     ax[bi].plot(val,dep, color=linecolor_list[di], 
-                                label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
-                #if not linecolor_list[di]:
-                    #ax[bi].plot(val,dep, label=label_list[di], linestyle=linestyle, linewidth=linewidth)
-                #else:
-                    
-                    
+                            label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
+            elif isinstance(linecolor_list[di], str):
+                ax[bi].plot(val,dep, color=linecolor_list[di], 
+                            label=label_list[di], linestyle=linestyle, linewidth=lwidth, alpha=do_alpha)
         #_______________________________________________________________________
         # if bi==nbi-1 : 
         if bi==n_rc[1]-1 : 
@@ -227,29 +215,29 @@ def plot_index_z(index_list, label_list, box_list, figsize=[12,8], n_rc=[1,1],
                           frameon=True, fancybox=True, shadow=True, fontsize=10, ncol=1,
                           labelspacing=1.0,
                           bbox_to_anchor=(2.3, 1.0)) #bbox_to_anchor=(1.5, 1.5))
-        
+
         #_______________________________________________________________________
         if 'boxname' in index_list[di][bi][vname[0]].attrs.keys(): 
             str_title = index_list[di][bi][vname[0] ].attrs['boxname']
         elif (isinstance(box_list[bi], shp.Reader)): 
             str_title = os.path.basename(box_list[bi].shapeName)
-        else:                                      
-            str_title = '{}'.format(str(box_list[bi]))
-        str_title.replace('_',' ')    
+        else:                              
+            str_title = f'{str(box_list[bi])}'
+        str_title.replace('_',' ')
         ax[bi].set_title(str_title)
-        
+
         #_______________________________________________________________________
         if collist[bi]==0:
             ax[bi].set_ylabel('depth [m]')
-        
+
         #_______________________________________________________________________
         if cbar_label is None     : str_xlabel = index_list[di][bi][ vname[0] ].attrs['long_name']
         else                      : str_xlabel = cbar_label
-        if str_rescale is not None: str_xlabel = str_xlabel+str_rescale  
+        if str_rescale is not None: str_xlabel = str_xlabel+str_rescale
         if cbar_unit  is None     : str_xlabel = str_xlabel+'\n ['+index_list[di][bi][ vname[0] ].attrs['units']+']'
-        else                      : str_xlabel = str_xlabel+'\n ['+cbar_unit+']'    
+        else                      : str_xlabel = str_xlabel+'\n ['+cbar_unit+']'
         ax[bi].set_xlabel(str_xlabel)
-        
+
         #_______________________________________________________________________
         if  do_rescale=='log10' and dep[0]==0: 
             ax[bi].set_ylim(dep[1],6000)
@@ -257,25 +245,25 @@ def plot_index_z(index_list, label_list, box_list, figsize=[12,8], n_rc=[1,1],
             ax[bi].set_ylim(dep[1],6000)
         else:
             ax[bi].set_ylim(dep[0],6000)
-        
+
         ax[bi].invert_yaxis()
         ax[bi].grid(True,which='major')
-        
+
         ax[bi].set_yscale('log')
         ax[bi].set_yticks([5,10,25,50,100,250,500,1000,2000,4000,6000])
         ax[bi].get_yaxis().set_major_formatter(ScalarFormatter())
-        
+
         ax[bi].xaxis.set_minor_locator(AutoMinorLocator())
     #___________________________________________________________________________
     # delete axes that are not needed
     for jj in range(bi+1, nax): fig.delaxes(ax[jj])    
-        
+
     plt.show()
-    
+
     #___________________________________________________________________________
     # save figure based on do_save contains either None or pathname
     do_savefigure(do_save, fig, )
-    
+
     #___________________________________________________________________________
     return(fig, ax)
     
