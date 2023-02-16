@@ -31,21 +31,21 @@ def do_analyse_transects(input_transect, mesh, edge, edge_tri, edge_dxdy_l, edge
         sub_transect['lon']  = transec_lon
         sub_transect['lat']  = transec_lat
         sub_transect['ncs']  = len(transec_lon)-1
-        
+
         #_______________________________________________________________________
         # loop over transect points
-        for ii in range(0,len(transec_lon)-1):
+        for ii in range(len(transec_lon)-1):
             sub_transect['ncsi'].append(ii)
-            
+
             #___________________________________________________________________
             # points defining cross-section line
             sub_transect['Px'].append([transec_lon[ii], transec_lon[ii+1]])
             sub_transect['Py'].append([transec_lat[ii], transec_lat[ii+1]])
-            
+
             #___________________________________________________________________
             # compute unit and normal vector of cross-section line
             sub_transect = _do_calc_csect_vec(sub_transect)
-            
+
             #___________________________________________________________________
             # pre-limit edges based on min/max lon and lat points that form 
             # cruise-line
@@ -59,45 +59,45 @@ def do_analyse_transects(input_transect, mesh, edge, edge_tri, edge_dxdy_l, edge
                                      ( mesh.n_y[edge].min(axis=0)>=Pymin ) &  
                                      ( mesh.n_y[edge].max(axis=0)<=Pymax ) )[0]
             del(Pxmin, Pxmax, Pymin, Pymax, Pdxy)
-            
+
             #___________________________________________________________________
             # compute which edges are intersected by cross-section line 
             sub_transect = _do_find_intersected_edges(mesh, sub_transect, edge, idx_edlimit)
-            
+
             #___________________________________________________________________
             # sort intersected edges after distance from cross-section start point
             sub_transect = _do_sort_intersected_edges(sub_transect)
-            
+
             #___________________________________________________________________
             # build transport path
             sub_transect = _do_build_path(mesh, sub_transect, edge_tri, edge_dxdy_l, edge_dxdy_r)
-            
+
         #_______________________________________________________________________
         # combine all cross-section sub segments into a single cross-section line
         transect = _do_concat_subtransects(sub_transect)
         del(sub_transect)
-        
+
         #_______________________________________________________________________    
         # insert land pts (nan) when there are 2 onsecutive cutted boundary 
         transect = _do_insert_landpts(transect, edge_tri)
-        
+
         #_______________________________________________________________________    
         # rotate path_dx and path_dy from rot --> geo coordinates
         transect['path_dx'], transect['path_dy'] = vec_r2g(mesh.abg, 
                                                     mesh.n_x[transect['path_ni']].sum(axis=1)/3.0, 
                                                     mesh.n_y[transect['path_ni']].sum(axis=1)/3.0,
                                                     transect['path_dx'], transect['path_dy'])
-            
+
         #_______________________________________________________________________ 
         # buld distance from start point array [km]
         transect = _do_compute_distance_from_startpoint(transect)
-        
+
         #___________________________________________________________________________    
         #if len(input_transect)>1:
         transect_list.append(transect)
-        #else:
-            #transect_list = transect
-        
+            #else:
+                #transect_list = transect
+
     #___________________________________________________________________________
     return(transect_list)
 
@@ -107,43 +107,33 @@ def do_analyse_transects(input_transect, mesh, edge, edge_tri, edge_dxdy_l, edge
 #
 #_______________________________________________________________________________
 def _do_init_transect():
-    transect = dict()
-    #___________________________________________________________________________
-    # arrays that define cross-section 
-    transect['Name'         ] = []
-    transect['lon'          ] = []
-    transect['lat'          ] = []
-    transect['ncsi'         ] = []
-    transect['ncs'          ] = []
-    transect['Px'           ] = []
-    transect['Py'           ] = []
-    transect['e_vec'        ] = []
-    transect['e_norm'       ] = []
-    transect['n_vec'        ] = []
-    transect['alpha'        ] = []
-    
-    #___________________________________________________________________________
-    # arrays that define the intersection between cross-section and edges
-    transect['edge_cut_i'   ] = []
-    transect['edge_cut_evec'] = []
-    transect['edge_cut_P'   ] = []
-    transect['edge_cut_midP'] = []
-    transect['edge_cut_lint'] = []
-    transect['edge_cut_ni'  ] = []
-    transect['edge_cut_dist'] = []
-    
-    #___________________________________________________________________________
-    # arrays to define transport path
-    transect['path_xy'      ] = [] # lon/lat coordinates, edge midpoints --> elem centroid --> edge mid points ...
-    transect['path_ei'      ] = [] # elem indices
-    transect['path_ni'      ] = [] # node indices of elems 
-    transect['path_dx'      ] = [] # dx of path sections
-    transect['path_dy'      ] = [] # dy of path sections
-    transect['path_dist'    ] = [] # dy of path sections
-    transect['path_nvec_cs' ] = [] # normal vector of transection segment
-    
-    #___________________________________________________________________________
-    return(transect)
+    return {
+        'Name': [],
+        'lon': [],
+        'lat': [],
+        'ncsi': [],
+        'ncs': [],
+        'Px': [],
+        'Py': [],
+        'e_vec': [],
+        'e_norm': [],
+        'n_vec': [],
+        'alpha': [],
+        'edge_cut_i': [],
+        'edge_cut_evec': [],
+        'edge_cut_P': [],
+        'edge_cut_midP': [],
+        'edge_cut_lint': [],
+        'edge_cut_ni': [],
+        'edge_cut_dist': [],
+        'path_xy': [],
+        'path_ei': [],
+        'path_ni': [],
+        'path_dx': [],
+        'path_dy': [],
+        'path_dist': [],
+        'path_nvec_cs': [],
+    }
 
 
 
@@ -245,18 +235,18 @@ def _do_calc_csect_vec(transect):
 #                 intersected. If |X[0,0]| > |vec_a| than edge is not intersected
 def _do_find_intersected_edges(mesh, transect, edge, idx_ed):
     #___________________________________________________________________________
-    transect['edge_cut_i'   ].append(list())
-    transect['edge_cut_evec'].append(list())
-    transect['edge_cut_P'   ].append(list())
-    transect['edge_cut_midP'].append(list())
-    transect['edge_cut_lint'].append(list())
-    transect['edge_cut_ni'  ].append(list())
-    
+    transect['edge_cut_i'   ].append([])
+    transect['edge_cut_evec'].append([])
+    transect['edge_cut_P'   ].append([])
+    transect['edge_cut_midP'].append([])
+    transect['edge_cut_lint'].append([])
+    transect['edge_cut_ni'  ].append([])
+
     #___________________________________________________________________________
     A, P    = np.zeros((2,2)), np.zeros((2,))
     A[0, 1] = -transect['e_vec'][-1][0]
     A[1, 1] = -transect['e_vec'][-1][1]
-    
+
     #___________________________________________________________________________
     # loop over indices of edges-->use already lon,lat limited edge indices 
     for edi in idx_ed: 
@@ -266,35 +256,35 @@ def _do_find_intersected_edges(mesh, transect, edge, idx_ed):
         A[:, 0] = A[:, 0]/normA0
         P[0]    = transect['Px'][-1][0]-mesh.n_x[edge[0, edi]]
         P[1]    = transect['Py'][-1][0]-mesh.n_y[edge[0, edi]]
-        
+
         # solve linear equation system: A * X = P --> solve for X[0]
         div     = (A[0,0]*A[1,1]-A[0,1]*A[1,0])
         X0      = (P[0]*A[1,1]-P[1]*A[0,1])/ div
         X1      = (P[0]*A[1,0]-P[1]*A[0,0])/-div
-        
+
         # determine if edge is intersected by crossection line
         if ((X0>=0) & (X0<=normA0               +np.finfo(np.float32).eps) &
             (X1>=0) & (X1<=transect['e_norm'][-1]+np.finfo(np.float32).eps) ):
             # indice of cutted edge
             transect['edge_cut_i'   ][-1].append(edi)
-            
+
             # evec of cutted edge 
             transect['edge_cut_evec'][-1].append([A[0, 0], A[1, 0]])
-            
+
             # cutting point on edge
             transect['edge_cut_P'   ][-1].append([mesh.n_x[edge[0,edi]]+A[0,0]*X0, 
                                                   mesh.n_y[edge[0,edi]]+A[1,0]*X0])
-            
+
             # mid point on edge
             transect['edge_cut_midP'][-1].append([mesh.n_x[edge[0,edi]]+A[0,0]*normA0/2.0, 
                                                   mesh.n_y[edge[0,edi]]+A[1,0]*normA0/2.0])
-            
+
             # interpolator for cutting points on edge Vcut= V1+(V2-V1)*(rc-r1)/(r2-r1)=V1+(V2-V1)*lint
             transect['edge_cut_lint'][-1].append(X0/normA0)
-            
+
             # node indices of intersectted edges 
             transect['edge_cut_ni'  ][-1].append(edge[:,edi])
-    
+
     #___________________________________________________________________________
     # transform from list --> np.array
     transect['edge_cut_i'   ][-1] = np.asarray(transect['edge_cut_i'   ][-1])
@@ -304,7 +294,7 @@ def _do_find_intersected_edges(mesh, transect, edge, idx_ed):
     transect['edge_cut_lint'][-1] = np.asarray(transect['edge_cut_lint'][-1])
     transect['edge_cut_ni'  ][-1] = np.asarray(transect['edge_cut_ni'  ][-1])
     del(A, P, X0, X1, normA0)
-    
+
     #___________________________________________________________________________
     return(transect)    
  
@@ -341,12 +331,12 @@ def _do_build_path(mesh, transect, edge_tri, edge_dxdy_l, edge_dxdy_r):
 
     #___________________________________________________________________________
     # allocate path arrays
-    path_xy = list()
-    path_ei = list()
-    path_ni = list()
-    path_dx = list()
-    path_dy = list()
-    
+    path_xy = []
+    path_ei = []
+    path_ni = []
+    path_dx = []
+    path_dy = []
+
     #_______________________________________________________________________
     # compute angle bearing of cross-section line: 
     #                            N
@@ -360,11 +350,11 @@ def _do_build_path(mesh, transect, edge_tri, edge_dxdy_l, edge_dxdy_r):
     #                            S
     alpha = -np.arctan2(transect['e_vec'][-1][1], transect['e_vec'][-1][0])
     transect['alpha'].append(alpha*180/np.pi)
-    
+
     #___________________________________________________________________________
     # loop over intersected edges 
     nced = transect['edge_cut_i'][-1].size
-    for edi in range(0,nced):
+    for edi in range(nced):
         #_______________________________________________________________________
         # --> rotate edge with bearing angle -alpha
         # determine if edge shows to the left or to the right with 
@@ -377,25 +367,25 @@ def _do_build_path(mesh, transect, edge_tri, edge_dxdy_l, edge_dxdy_r):
         theta= np.arctan2(auxy,auxx)
         # print(theta*180/np.pi)
         del(auxx, auxy)
-                
+
         # indices of [L]eft and [R]ight triangle with respect to the edge
         edge_elem  = edge_tri[:, transect['edge_cut_i'][-1][edi]]
-        
+
         #_______________________________________________________________________
         # add upsection element to path if it exist --> path_xy coodinate points 
         # for the element always come from downsection triangle 
         path_xy, path_ei, path_ni, path_dx, path_dy = __add_upsection_elem2path(mesh, transect, edi, nced, theta, 
                                                   edge_elem, edge_dxdy_l, edge_dxdy_r,
                                                   path_xy, path_ei, path_ni, path_dx, path_dy)
-            
+
         # add edge mid point of cutted edge
         path_xy.append(transect['edge_cut_midP'][-1][edi])
-            
+
         # add downsection element to path if it exist
         path_xy, path_ei, path_ni, path_dx, path_dy = __add_downsection_elem2path(mesh, transect, edi, nced, theta, 
                                                   edge_elem, edge_dxdy_l, edge_dxdy_r,
                                                   path_xy, path_ei, path_ni, path_dx, path_dy)
-        
+
     #___________________________________________________________________________    
     # reformulate from list --> np.array
     transect['path_xy'].append(np.asarray(path_xy))
@@ -403,12 +393,12 @@ def _do_build_path(mesh, transect, edge_tri, edge_dxdy_l, edge_dxdy_r):
     transect['path_ni'].append(np.asarray(path_ni))
     transect['path_dx'].append(np.asarray(path_dx))
     transect['path_dy'].append(np.asarray(path_dy))
-    
+
     aux = np.ones((transect['path_dx'][-1].size,2))
     aux[:,0], aux[:,1] = transect['n_vec'][-1][0], transect['n_vec'][-1][1]
     transect['path_nvec_cs'].append(aux)
     del(aux)
-    
+
     # !!! Make sure positive Transport is defined S-->N and W-->E
     # --> Preliminary --> not 100% sure its universal
     rad = np.pi/180
@@ -417,7 +407,7 @@ def _do_build_path(mesh, transect, edge_tri, edge_dxdy_l, edge_dxdy_r):
         #print(' >-))))°>.°oO :1')
         transect['path_dx'][-1] = -transect['path_dx'][-1]
         transect['path_dy'][-1] = -transect['path_dy'][-1]
-        
+
         transect['path_nvec_cs'][-1] = transect['path_nvec_cs'][-1]
     del(path_xy, path_ei, path_ni, path_dx, path_dy, edge_elem)
 
@@ -496,60 +486,48 @@ def __add_upsection_elem2path(mesh, transect, edi, nced, theta, edge_elem, edge_
         # left triangle 
         path_ei.append(edge_elem[0])
         path_ni.append(mesh.e_i[edge_elem[0], :])
-        
+
         # need to flip edge_dxdy vector through minus sign since its opposite 
         # directed to the transect direction --> upsection
         path_dx.append(-edge_dxdy_l[0, transect['edge_cut_i'][-1][edi]])
         path_dy.append(-edge_dxdy_l[1, transect['edge_cut_i'][-1][edi]])
-    
-    #___________________________________________________________________________
-    # if theta<0 edge shows to the right
-    #                          ^ Section
-    #                   [L]eft | Triangle
-    #                          |
-    #           1o-------------+------------->o2   edge
-    #                          | 
-    #                 [R]right | Triangle upsection triangle
+
+    elif edge_elem[1]>=0:
+        path_ei.append(edge_elem[1])
+        path_ni.append(mesh.e_i[edge_elem[1], :])
+
+        # need to flip edge_dxdy vector through minus sign since its opposite 
+        # directed to the transect direction --> upsection
+        path_dx.append(-edge_dxdy_r[0, transect['edge_cut_i'][-1][edi]])
+        path_dy.append(-edge_dxdy_r[1, transect['edge_cut_i'][-1][edi]])
+
     else:
-        # right triangle
-        if edge_elem[1]>=0:
-            path_ei.append(edge_elem[1])
-            path_ni.append(mesh.e_i[edge_elem[1], :])
-            
-            # need to flip edge_dxdy vector through minus sign since its opposite 
-            # directed to the transect direction --> upsection
-            path_dx.append(-edge_dxdy_r[0, transect['edge_cut_i'][-1][edi]])
-            path_dy.append(-edge_dxdy_r[1, transect['edge_cut_i'][-1][edi]])
-            
-        # edge is boundary edge right triangle does not exist--> put dummy values
-        # instead of centroid position (transect['edge_cut_midP'][-1][edi])  
-        else:
-            # enter additional point close to the boundary with additional 
-            # ei, ni, dx and dy --> ensures that transect is porperly plotted
-            # when it cutts over land 
-            #print(' >-))))°> .°oO: upsection', edi)
-            path_xy.append(transect['edge_cut_midP'][-1][edi])  #(***)
-            path_ei.append(-1)                                  #(***) 
-            path_ni.append(np.array([-1, -1, -1]))              #(***)
+        # enter additional point close to the boundary with additional 
+        # ei, ni, dx and dy --> ensures that transect is porperly plotted
+        # when it cutts over land 
+        #print(' >-))))°> .°oO: upsection', edi)
+        path_xy.append(transect['edge_cut_midP'][-1][edi])  #(***)
+        path_ei.append(-1)                                  #(***) 
+        path_ni.append(np.array([-1, -1, -1]))              #(***)
+        path_dx.append(np.nan)
+        path_dy.append(np.nan)
+
+        if edi not in [0, nced - 1]:
+            path_ei.append(-1)                     
+            path_ni.append(np.array([-1, -1, -1])) 
             path_dx.append(np.nan)
             path_dy.append(np.nan)
-            
-            if edi!=0 and edi!=nced-1:
-                path_ei.append(-1)                     
-                path_ni.append(np.array([-1, -1, -1])) 
-                path_dx.append(np.nan)
-                path_dy.append(np.nan)
-            elif transect['ncsi'][-1]!=0 and edi==0:        
-                path_ei.append(-1)                     
-                path_ni.append(np.array([-1, -1, -1])) 
-                path_dx.append(np.nan)
-                path_dy.append(np.nan)
-            elif transect['ncsi'][-1]!=transect['ncs'] and edi==nced-1:        
-                path_ei.append(-1)                     
-                path_ni.append(np.array([-1, -1, -1])) 
-                path_dx.append(np.nan)
-                path_dy.append(np.nan)
-                
+        elif transect['ncsi'][-1]!=0 and edi==0:        
+            path_ei.append(-1)                     
+            path_ni.append(np.array([-1, -1, -1])) 
+            path_dx.append(np.nan)
+            path_dy.append(np.nan)
+        elif transect['ncsi'][-1]!=transect['ncs'] and edi==nced-1:        
+            path_ei.append(-1)                     
+            path_ni.append(np.array([-1, -1, -1])) 
+            path_dx.append(np.nan)
+            path_dy.append(np.nan)
+
     #___________________________________________________________________________
     return(path_xy, path_ei, path_ni, path_dx, path_dy)
 

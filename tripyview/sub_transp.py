@@ -17,32 +17,31 @@ def calc_mhflx(mesh, data, lat, edge, edge_tri, edge_dxdy_l, edge_dxdy_r):
     #___________________________________________________________________________
     vname_list = list(data.keys())
     vname, vname2 = vname_list[0], vname_list[1]
-    
+
     #___________________________________________________________________________
     # Create xarray dataset
     list_dimname, list_dimsize = ['nlat'], [lat.size]
-    
-    data_vars = dict()
+
     aux_attr  = data[vname].attrs
     aux_attr['long_name'], aux_attr['units'] = 'Meridional Heat Transport', 'PW'
-    data_vars['mhflx'] = (list_dimname, np.zeros(list_dimsize), aux_attr) 
+    data_vars = {'mhflx': (list_dimname, np.zeros(list_dimsize), aux_attr)}
     # define coordinates
     coords    = {'nlat' : (['nlat' ], lat )}
     # create dataset
     mhflx     = xr.Dataset(data_vars=data_vars, coords=coords, attrs=data.attrs)
     del(data_vars, coords, aux_attr)
-    
+
     #___________________________________________________________________________
     # factors for heatflux computation
     rho0 = 1030 # kg/m^3
     cp   = 3850 # J/kg/K
     inPW = 1.0e-15
-    
+
     #___________________________________________________________________________
     # coordinates of triangle centroids
     e_x  = mesh.n_x[mesh.e_i].sum(axis=1)/3.0
     e_y  = mesh.n_y[mesh.e_i].sum(axis=1)/3.0
-    
+
     #___________________________________________________________________________
     # do zonal sum over latitudinal bins 
     for bini, lat_i in enumerate(lat):
@@ -50,18 +49,18 @@ def calc_mhflx(mesh, data, lat, edge, edge_tri, edge_dxdy_l, edge_dxdy_r):
         ind  = ((mesh.n_y[edge[0,:]]-lat_i)*(mesh.n_y[edge[1,:]]-lat_i) < 0.)
         ind2 =  (mesh.n_y[edge[0,:]] <= lat_i)
         if not np.any(ind): continue
-        
+
         #_______________________________________________________________________
         edge_dxdy_l[:, ind2]=-edge_dxdy_l[:, ind2]
         edge_dxdy_r[:, ind2]=-edge_dxdy_r[:, ind2]
-        
+
         #_______________________________________________________________________
         # here must be a rotation of tu1,tv1; tu2,tv2 dx1,dy1; dx2,dy2 from rot-->geo
         dx1, dx2 = edge_dxdy_l[0,ind], edge_dxdy_r[0,ind] 
         dy1, dy2 = edge_dxdy_l[1,ind], edge_dxdy_r[1,ind]
         tu1, tv1 = data[vname].values[edge_tri[0, ind], :], data[vname2].values[edge_tri[0, ind], :]
         tu2, tv2 = data[vname].values[edge_tri[1, ind], :], data[vname2].values[edge_tri[1, ind], :]
-        
+
         # can not rotate them together
         dum, tv1 = vec_r2g(mesh.abg, e_x[edge_tri[0, ind]], e_y[edge_tri[0, ind]], tu1, tv1)
         dx1, dum = vec_r2g(mesh.abg, e_x[edge_tri[0, ind]], e_y[edge_tri[0, ind]], dx1, dy1)
@@ -69,19 +68,19 @@ def calc_mhflx(mesh, data, lat, edge, edge_tri, edge_dxdy_l, edge_dxdy_r):
         dx2, dum = vec_r2g(mesh.abg, e_x[edge_tri[1, ind]], e_y[edge_tri[1, ind]], dx2, dy2)
         tv1, tv2 = tv1.T, tv2.T
         del(dum, dy1, dy2, tu1, tu2)
-        
+
         #_______________________________________________________________________
         # integrate along latitude bin--> int(t*u)dx 
         tv_dx    = np.nansum(tv1*np.abs(dx1) + tv2*np.abs(dx2), axis=1)
-        
+
         #_______________________________________________________________________
         # integrate vertically --> int()dz
         mhflx['mhflx'].data[bini] = np.sum(tv_dx * np.abs(mesh.zlev[1:]-mesh.zlev[:-1])) *rho0*cp*inPW
-        
+
         #_______________________________________________________________________
         edge_dxdy_l[:, ind2]=-edge_dxdy_l[:, ind2]
         edge_dxdy_r[:, ind2]=-edge_dxdy_r[:, ind2]
-        
+
     #___________________________________________________________________________
     return(mhflx)
 
@@ -92,31 +91,30 @@ def calc_mhflx(mesh, data, lat, edge, edge_tri, edge_dxdy_l, edge_dxdy_r):
 def calc_gmhflx(mesh, data, lat):
     #___________________________________________________________________________
     vname = list(data.keys())[0]
-    
+
     #___________________________________________________________________________
     # Create xarray dataset
     list_dimname, list_dimsize = ['nlat'], [lat.size]
-    data_vars = dict()
     aux_attr  = data[vname].attrs
     aux_attr['long_name'], aux_attr['units'] = 'Global Meridional Heat Transport', 'PW'
-    data_vars['gmhflx'] = (list_dimname, np.zeros(list_dimsize), aux_attr) 
+    data_vars = {'gmhflx': (list_dimname, np.zeros(list_dimsize), aux_attr)}
     # define coordinates
     coords    = {'nlat' : (['nlat' ], lat )}
     # create dataset
     ghflx     = xr.Dataset(data_vars=data_vars, coords=coords, attrs=data.attrs)
     del(data_vars, coords, aux_attr)
-    
+
     #___________________________________________________________________________
     # factors for heatflux computation
     inPW = 1.0e-15
-    
+
     #___________________________________________________________________________
     data[vname] = data[vname]*data['w_A']
-    
+
     #___________________________________________________________________________
     # do zonal sum over latitudinal bins 
     dlat = lat[1]-lat[0]
-    lat_i = (( mesh.n_y-lat[0])/dlat ).astype('int')    
+    lat_i = (( mesh.n_y-lat[0])/dlat ).astype('int')
     for bini in range(lat_i.min(), lat_i.max()):
         # sum over latitudinal bins
         ghflx['gmhflx'].data[bini] = data[vname].isel(nod2=lat_i==bini).sum(dim='nod2')*inPW
@@ -124,7 +122,7 @@ def calc_gmhflx(mesh, data, lat):
     #___________________________________________________________________________    
     # do cumulative sum over latitudes    
     ghflx['gmhflx'] = -ghflx['gmhflx'].cumsum(dim='nlat', skipna=True) 
-    
+
     #___________________________________________________________________________
     return(ghflx)
 
@@ -133,63 +131,66 @@ def calc_gmhflx(mesh, data, lat):
 #|                                                                             |
 #+_____________________________________________________________________________+
 def calc_gmhflx_box(mesh, data, box_list, dlat=1.0):
-    list_ghflx=list()
+    list_ghflx = []
     #___________________________________________________________________________
     vname       = list(data.keys())[0]
     data[vname] = data[vname]*data['w_A']
     # factors for heatflux computation
     inPW = 1.0e-15
-    
+
     #___________________________________________________________________________
     # Loop over boxes
     for box in box_list:
-        if not isinstance(box, shp.Reader) and not box =='global' and not box==None :
+        if (
+            not isinstance(box, shp.Reader)
+            and box != 'global'
+            and box is not None
+        ):
             if len(box)==2: boxname, box = box[1], box[0]
         elif isinstance(box, shp.Reader):
             boxname = box.shapeName.split('/')[-1].replace('_',' ')
         elif box =='global':    
             boxname = 'global'
-            
+
         #_______________________________________________________________________
         # compute box mask index for nodes 
         n_idxin=do_boxmask(mesh,box)
-        
+
         #_______________________________________________________________________
         # do zonal sum over latitudinal bins 
         lat   = np.arange(np.floor(mesh.n_y[n_idxin].min())+dlat/2, 
                           np.ceil( mesh.n_y[n_idxin].max())-dlat/2, 
                           dlat)
         lat_i = (( mesh.n_y[n_idxin]-lat[0])/dlat ).astype('int')    
-        
+
         #_______________________________________________________________________
         # Create xarray dataset
         list_dimname, list_dimsize = ['nlat'], [lat.size]
-        data_vars = dict()
         aux_attr  = data[vname].attrs
         aux_attr['long_name']  = f'{boxname} Meridional Heat Transport'
         aux_attr['short_name'] = f'{boxname} Merid. Heat Transp.'
         aux_attr['units']      = 'PW'
-        data_vars['gmhflx'] = (list_dimname, np.zeros(list_dimsize), aux_attr) 
+        data_vars = {'gmhflx': (list_dimname, np.zeros(list_dimsize), aux_attr)}
         # define coordinates
         coords    = {'nlat' : (['nlat' ], lat )}
         # create dataset
         ghflx     = xr.Dataset(data_vars=data_vars, coords=coords, attrs=data.attrs)
         del(data_vars, coords, aux_attr)
-        
+
         #_______________________________________________________________________
         data_box = data[vname].isel(nod2=n_idxin)
         for bini in range(lat_i.min(), lat_i.max()):
             # sum over latitudinal bins
             ghflx['gmhflx'].data[bini] = data_box.isel(nod2=lat_i==bini).sum(dim='nod2')*inPW
-        
+
         #_______________________________________________________________________
         # do cumulative sum over latitudes    
         ghflx['gmhflx'] = -ghflx['gmhflx'].cumsum(dim='nlat', skipna=True) 
-    
+
         #_______________________________________________________________________
         if len(box_list)==1: list_ghflx = ghflx
         else               : list_ghflx.append(ghflx)
-        
+
     #___________________________________________________________________________
     return(list_ghflx)
 
@@ -203,38 +204,37 @@ def calc_hbarstreamf(mesh, data, lon, lat, edge, edge_tri, edge_dxdy_l, edge_dxd
     #___________________________________________________________________________
     vname_list = list(data.keys())
     vname, vname2 = vname_list[0], vname_list[1]
-    
+
     #___________________________________________________________________________
     # Create xarray dataset
     list_dimname, list_dimsize = ['nlon','nlat'], [lon.size, lat.size]
-    
-    data_vars = dict()
+
     aux_attr  = data[vname].attrs
     aux_attr['long_name'], aux_attr['units'] = 'Horizontal. Barotropic \n Streamfunction', 'Sv'
     aux_attr['short_name']= 'Horiz. Barotr. Streamf.'
-    data_vars['hbstreamf'] = (list_dimname, np.zeros(list_dimsize), aux_attr) 
+    data_vars = {'hbstreamf': (list_dimname, np.zeros(list_dimsize), aux_attr)}
     # define coordinates
     coords    = {'nlon' : (['nlon' ], lon ), 'nlat' : (['nlat' ], lat ), }
-    
+
     # create dataset
     hbstreamf = xr.Dataset(data_vars=data_vars, coords=coords, attrs=data.attrs)
     del(data_vars, coords, aux_attr)
-    
+
     #___________________________________________________________________________
     # factors for heatflux computation
     inSv = 1.0e-6
     #mask = np.zeros((list_dimsize))
-    
+
     #___________________________________________________________________________
-    # loop over longitudinal bins 
+    # loop over longitudinal bins
     for ix, lon_i in enumerate(lon):
         ind  = ((mesh.n_x[edge[0,:]]-lon_i)*(mesh.n_x[edge[1,:]]-lon_i) <= 0.) & (abs(mesh.n_x[edge[0,:]]-lon_i)<50.) & (abs(mesh.n_x[edge[1,:]]-lon_i)<50.)
         ind2 =  (mesh.n_x[edge[0,:]] <= lon_i)
-            
+
         #_______________________________________________________________________
         edge_dxdy_l[:, ind2]=-edge_dxdy_l[:, ind2]
         edge_dxdy_r[:, ind2]=-edge_dxdy_r[:, ind2]
-        
+
         #_______________________________________________________________________
         u1dxl = (edge_dxdy_l[0,ind] * data[vname ].values[edge_tri[0,ind],:].T)
         v1dyl = (edge_dxdy_l[1,ind] * data[vname2].values[edge_tri[0,ind],:].T)
@@ -242,33 +242,33 @@ def calc_hbarstreamf(mesh, data, lon, lat, edge, edge_tri, edge_dxdy_l, edge_dxd
         v2dyr = (edge_dxdy_r[1,ind] * data[vname2].values[edge_tri[1,ind],:].T)
         AUX   =-(u1dxl+v1dyl+u2dxr+v2dyr)*inSv
         del(u1dxl, v1dyl, u2dxr, v2dyr)
-        
+
         #_______________________________________________________________________
-        # loop over latitudinal bins 
-        for iy in range(0, lat.size-1):
+        # loop over latitudinal bins
+        for iy in range(lat.size-1):
             iind=(mesh.n_y[edge[:,ind]].mean(axis=0)>lat[iy]) & (mesh.n_y[edge[:,ind]].mean(axis=0)<=lat[iy+1])
             hbstreamf['hbstreamf'].data[ix, iy] = np.nansum(np.diff(-mesh.zlev)*np.nansum(AUX[:,iind],axis=1))
             #if not np.any(iind): continue
             #mask[ix,iy] = 1
-            
+
         #_______________________________________________________________________
         edge_dxdy_l[:, ind2]=-edge_dxdy_l[:, ind2]
         edge_dxdy_r[:, ind2]=-edge_dxdy_r[:, ind2]
         del(ind, ind2)
-        
+
     #___________________________________________________________________________
     hbstreamf['hbstreamf'] =-hbstreamf['hbstreamf'].cumsum(dim='nlat', skipna=True)#+150.0 
     hbstreamf['hbstreamf'] = hbstreamf['hbstreamf'].transpose()
     hbstreamf['hbstreamf'].data = hbstreamf['hbstreamf'].data-hbstreamf['hbstreamf'].data[-1,:]
-    
+
     # impose periodic boundary condition
     hbstreamf['hbstreamf'].data[:,-1] = hbstreamf['hbstreamf'].data[:,-2]
     hbstreamf['hbstreamf'].data[:,0] = hbstreamf['hbstreamf'].data[:,1]
     #mask[-1,:] = mask[0,:]
-    
+
     # set land sea mask 
     #hbstreamf['hbstreamf'].data[mask.T==0] = np.nan
-    
+
     #del(mask)
     #___________________________________________________________________________
     return(hbstreamf)
@@ -283,20 +283,16 @@ def plot_mhflx(mhflx_list, input_names, sect_name=None, str_descript='', str_tim
     from matplotlib.ticker import AutoMinorLocator, MultipleLocator
     if len(figsize)==0: figsize=[7,3.5]
     fig,ax= plt.figure(figsize=figsize),plt.gca()
-    
+
     #___________________________________________________________________________
     # setup colormap
-    if do_allcycl: 
-        if which_cycl is not None:
-            cmap = categorical_cmap(np.int32(len(mhflx_list)/which_cycl), which_cycl, cmap="tab10")
-        else:
-            cmap = categorical_cmap(len(mhflx_list), 1, cmap="tab10")
+    if do_allcycl and which_cycl is not None:
+        cmap = categorical_cmap(np.int32(len(mhflx_list)/which_cycl), which_cycl, cmap="tab10")
     else:
         cmap = categorical_cmap(len(mhflx_list), 1, cmap="tab10")
-    
     #___________________________________________________________________________
     for ii_ts, (data, data_name) in enumerate(zip(mhflx_list, input_names)):
-        
+
         vname = list(data.keys())[0]
         #_______________________________________________________________________
         data_x, data_y = data['nlat'].values, data[vname].values
@@ -304,19 +300,19 @@ def plot_mhflx(mhflx_list, input_names, sect_name=None, str_descript='', str_tim
                 linewidth=1, label=data_name, color=cmap.colors[ii_ts,:], 
                 marker='None', markerfacecolor='w', markersize=5, 
                 zorder=2)
-                 
+
     #___________________________________________________________________________
     ax.legend(shadow=True, fancybox=True, frameon=True, bbox_to_anchor=(1.02,0.5), loc="center left", borderaxespad=0)
     ax.set_xlabel('Latitude [deg]',fontsize=12)
     if   vname == 'gmhflx': y_label = 'Global Meridional Heat Transport'
     elif vname == 'mhflx' : y_label = 'Meridional Heat Transport'
-    
+
     if 'units' in mhflx_list[0][vname].attrs.keys():
-        y_label = y_label + ' [' + mhflx_list[0][vname].attrs['units'] +']'
+        y_label = f'{y_label} [' + mhflx_list[0][vname].attrs['units'] + ']'
     if 'str_ltim' in mhflx_list[0][vname].attrs.keys():
         y_label = y_label+'\n'+mhflx_list[0][vname].attrs['str_ltim']
     ax.set_ylabel(y_label, fontsize=12)  
-        
+
     #___________________________________________________________________________
     ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=20))
     ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=10))
@@ -324,15 +320,15 @@ def plot_mhflx(mhflx_list, input_names, sect_name=None, str_descript='', str_tim
     ax.xaxis.set_minor_locator(mticker.AutoMinorLocator())
     plt.grid(which='major')
     plt.xlim(data_x[0]-(data_x[-1]-data_x[0])*0.015,data_x[-1]+(data_x[-1]-data_x[0])*0.015)    
-        
+
     #___________________________________________________________________________
     plt.show()
     fig.canvas.draw()
-    
+
     #___________________________________________________________________________
     # save figure based on do_save contains either None or pathname
     do_savefigure(do_save, fig, dpi=save_dpi)
-    
+
     #___________________________________________________________________________
     return(fig, ax)
 
@@ -352,7 +348,7 @@ def plot_vflx_tseries(time, tseries_list, input_names, sect_name, which_cycl=Non
     if len(figsize)==0: figsize=[13,6.5]
     if do_concat: figsize[0] = figsize[0]*2
     fig,ax= plt.figure(figsize=figsize),plt.gca()
-    
+
     #___________________________________________________________________________
     # setup colormap
     if do_allcycl: 
@@ -363,24 +359,22 @@ def plot_vflx_tseries(time, tseries_list, input_names, sect_name, which_cycl=Non
     else:
         if do_concat: do_concat=False
         cmap = categorical_cmap(len(tseries_list), 1, cmap="tab10")
-    
+
     #___________________________________________________________________________
     ii, ii_cycle = 0, 1
-    if which_cycl is None: aux_which_cycl = 1
-    else                 : aux_which_cycl = which_cycl
-    
+    aux_which_cycl = 1 if which_cycl is None else which_cycl
     for ii_ts, (tseries, tname) in enumerate(zip(tseries_list, input_names)):
-        
+
         if tseries.ndim>1: tseries = tseries.squeeze()
         auxtime = time.copy()
         if np.mod(ii_ts+1,aux_which_cycl)==0 or do_allcycl==False:
-            
+
             if do_concat: auxtime = auxtime + (time[-1]-time[0]+1)*(ii_cycle-1)
             hp=ax.plot(auxtime,tseries, 
                    linewidth=1.5, label=tname, color=cmap.colors[ii_ts,:], 
                    marker='o', markerfacecolor='w', markersize=5, #path_effects=[path_effects.SimpleLineShadow(offset=(1.5,-1.5),alpha=0.3),path_effects.Normal()],
                    zorder=2)
-            
+
             if do_pltmean: 
                 # plot mean value with triangle 
                 plt.plot(time[0]-(time[-1]-time[0])*0.0120, tseries.mean(),
@@ -391,56 +385,55 @@ def plot_vflx_tseries(time, tseries_list, input_names, sect_name, which_cycl=Non
                 plt.plot(time[0]-(time[-1]-time[0])*0.015, tseries.mean()+tseries.std(),
                         marker='^', markersize=6, markeredgecolor='k', markeredgewidth=0.5,
                         color=hp[0].get_color(),clip_box=False,clip_on=False, zorder=3)
-                
+
                 plt.plot(time[0]-(time[-1]-time[0])*0.015, tseries.mean()-tseries.std(),
                         marker='v', markersize=6, markeredgecolor='k', markeredgewidth=0.5,
                         color=hp[0].get_color(),clip_box=False,clip_on=False, zorder=3)
-        
+
         else:
             if do_concat: auxtime = auxtime + (time[-1]-time[0]+1)*(ii_cycle-1)
             hp=ax.plot(auxtime, tseries, 
                    linewidth=1.5, label=tname, color=cmap.colors[ii_ts,:],
                    zorder=1) #marker='o', markerfacecolor='w', 
                    # path_effects=[path_effects.SimpleLineShadow(offset=(1.5,-1.5),alpha=0.3),path_effects.Normal()])
-        
+
         ii_cycle=ii_cycle+1
         if ii_cycle>aux_which_cycl: ii_cycle=1
-        
+
     #___________________________________________________________________________
     ax.legend(shadow=True, fancybox=True, frameon=True, #mode='None', 
               bbox_to_anchor=(1.04,0.5), loc="center left", borderaxespad=0)
-              #bbox_to_anchor=(1.04, 1.0), ncol=1) #loc='lower right', 
     ax.set_xlabel('Time [years]',fontsize=12)
     ax.set_ylabel('{:s} in [Sv]'.format('Transport'),fontsize=12)
     ax.set_title(sect_name, fontsize=12, fontweight='bold')
-    
+
     #___________________________________________________________________________
     if do_concat: xmaxstep=20
     xmajor_locator = MultipleLocator(base=xmaxstep) # this locator puts ticks at regular intervals
     ymajor_locator = MultipleLocator(base=ymaxstep) # this locator puts ticks at regular intervals
     ax.xaxis.set_major_locator(xmajor_locator)
     ax.yaxis.set_major_locator(ymajor_locator)
-    
+
     if not do_concat:
         xminor_locator = AutoMinorLocator(5)
         yminor_locator = AutoMinorLocator(4)
         ax.yaxis.set_minor_locator(yminor_locator)
         ax.xaxis.set_minor_locator(xminor_locator)
-    
+
     plt.grid(which='major')
     if not do_concat:
         plt.xlim(time[0]-(time[-1]-time[0])*0.015,time[-1]+(time[-1]-time[0])*0.015)    
     else:    
         plt.xlim(time[0]-(time[-1]-time[0])*0.015,time[-1]+(time[-1]-time[0]+1)*(aux_which_cycl-1)+(time[-1]-time[0])*0.015)    
-    
+
     #___________________________________________________________________________
     plt.show()
     fig.canvas.draw()
-    
+
     #___________________________________________________________________________
     # save figure based on do_save contains either None or pathname
     do_savefigure(do_save, fig, dpi=save_dpi)
-    
+
     #___________________________________________________________________________
     return(fig,ax)
 

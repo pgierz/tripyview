@@ -59,118 +59,118 @@ def load_mesh_fesom2(
     """
     #___________________________________________________________________________
     pickleprotocol=4
-    
+
     #___________________________________________________________________________
     # path of mesh location
     meshpath = os.path.normpath(meshpath)
     meshid   = os.path.basename(meshpath)
-    
+
     #___________________________________________________________________________
     # build path for cach to store the pickle files, either in home directory or 
     # in path given by environment variable MYPY_MESHPATH 
     cachepath = path = os.environ.get('MESHPATH_TRIPYVIEW', os.path.join(os.path.expanduser("~"), "meshcache_tripyview"))
     cachepath = os.path.join(cachepath, meshid)
     if not os.path.isdir(cachepath):
-        if do_info: print(' > create cache: {}'.format(cachepath))
+        if do_info:
+            print(f' > create cache: {cachepath}')
         os.makedirs(cachepath)
-    
+
     #___________________________________________________________________________
     # check if pickle file can be found somewhere either in mesh folder or in 
     # cache folder 
     #picklefname = 'mypymesh_fesom2.pckl'
     #picklefname = 'tripyview_fesom2_'+meshid+'.pckl'
-    picklefname = 'tripyview_fesom2_{}_focus{}.pckl'.format(meshid,focus)
+    picklefname = f'tripyview_fesom2_{meshid}_focus{focus}.pckl'
     if do_pickle:
         # check if mypy pickle meshfile is found in meshfolder
-        if    ( os.path.isfile(os.path.join(meshpath, picklefname)) ):
+        if ( os.path.isfile(os.path.join(meshpath, picklefname)) ):
             loadpicklepath = os.path.join(meshpath, picklefname)
-            if do_info: print(' > found *.pckl file: {}'.format(os.path.dirname(loadpicklepath)))    
-            
-        # check if mypy pickle meshfile is found in cache folder
+            if do_info:
+                print(f' > found *.pckl file: {os.path.dirname(loadpicklepath)}')    
+
         elif ( os.path.isfile(os.path.join(cachepath, picklefname)) ):
             loadpicklepath = os.path.join(cachepath, picklefname)
-            if do_info: print(' > found *.pckl file: {}'.format(os.path.dirname(loadpicklepath)))
-            
+            if do_info:
+                print(f' > found *.pckl file: {os.path.dirname(loadpicklepath)}')
+
         else:
             loadpicklepath = 'None'
             print(' > found no .pckl file in cach or mesh path')    
-            
+
     #___________________________________________________________________________
     # load pickle file if it exists and load it from .pckl file, if it does not 
     # exist create mesh object with fesom_mesh
     # do_pickle==True and .pckl file exists
-    if   do_pickle and ( os.path.isfile(loadpicklepath) ): 
-        if do_info: print(' > load  *.pckl file: {}'.format(os.path.basename(loadpicklepath)))
-        #_______________________________________________________________________
-        fid  = open(loadpicklepath, "rb")
-        mesh = pickle.load(fid)
-        fid.close()
-        
+    if do_pickle and ( os.path.isfile(loadpicklepath) ): 
+        if do_info:
+            print(f' > load  *.pckl file: {os.path.basename(loadpicklepath)}')
+        with open(loadpicklepath, "rb") as fid:
+            mesh = pickle.load(fid)
         do_pbndfind=False
         #_______________________________________________________________________
-        # rotate mesh if its not done in .pckle file 
-        if (mesh.do_rot != do_rot) : 
+        # rotate mesh if its not done in .pckle file
+        if (mesh.do_rot != do_rot): 
             do_pbndfind = True
-            if   (do_rot == 'r2g'):
+            if (do_rot == 'r2g'):
                 #_______________________________________________________________
                 mesh.do_rot          = 'r2g'
                 mesh.n_xo, mesh.n_yo = mesh.n_x, mesh.n_y
                 mesh.n_x , mesh.n_y  = grid_r2g(mesh.abg, mesh.n_xo, mesh.n_yo)
-                
+
                 #_______________________________________________________________
-                # rotate also periodic land sea mask 
+                # rotate also periodic land sea mask
                 if len(mesh.lsmask) != 0:
-                    for ii in range(0,len(mesh.lsmask)):
+                    for ii in range(len(mesh.lsmask)):
                         auxx, auxy      = grid_r2g(mesh.abg, mesh.lsmask[ii][:,0], mesh.lsmask[ii][:,1])
                         mesh.lsmask[ii] = np.vstack((auxx,auxy)).transpose()
                         del auxx, auxy
-                
+
             elif (do_rot == 'g2r'):
                 #_______________________________________________________________
                 mesh.do_rot          = 'g2r'
                 mesh.n_xo, mesh.n_yo = mesh.n_x, mesh.n_y
                 mesh.n_x , mesh.n_y  = grid_g2r(mesh.abg, mesh.n_xo, mesh.n_yo)
-                
+
                 #_______________________________________________________________
-                # rotate also periodic land sea mask 
+                # rotate also periodic land sea mask
                 if len(mesh.lsmask) != 0:
-                    for ii in range(0,len(mesh.lsmask)):
+                    for ii in range(len(mesh.lsmask)):
                         auxx, auxy      = grid_g2r(mesh.abg, mesh.lsmask[ii][:,0], mesh.lsmask[ii][:,1])
                         mesh.lsmask[ii] = np.vstack((auxx,auxy)).transpose()
                         del auxx, auxy
-                        
-            elif (do_rot == None or do_rot == 'None'):    
+
+            elif do_rot is None or do_rot == 'None':    
                 mesh.do_rot = 'None'
             else: 
                 raise ValueError("This rotatio option in do_rot is not supported.")
-            
+
         #_______________________________________________________________________
-        # change focus 
+        # change focus
         if (mesh.focus != focus): 
             #___________________________________________________________________
             do_pbndfind          = True
             mesh.focus           = focus
             mesh.n_xo, mesh.n_yo = mesh.n_x, mesh.n_y
             mesh.n_x,  mesh.n_y  = grid_focus(focus, mesh.n_xo, mesh.n_yo)
-        
+
             #___________________________________________________________________
-            # rotate also periodic land sea mask 
+            # rotate also periodic land sea mask
             if len(mesh.lsmask) != 0:
-                for ii in range(0,len(mesh.lsmask)):
+                for ii in range(len(mesh.lsmask)):
                     auxx, auxy      = grid_focus(focus, mesh.lsmask[ii][:,0], mesh.lsmask[ii][:,1])
                     mesh.lsmask[ii] = np.vstack((auxx,auxy)).transpose()
                     del auxx, auxy
-                        
+
         #_______________________________________________________________________
         # find periodic boundary
         if do_pbndfind:
             mesh.pbnd_find()
-        
+
         #_______________________________________________________________________
         # augment periodic boundary if it wasnot done in .pckl file
         if  ((not mesh.do_augmpbnd) and do_augmpbnd) or (do_augmpbnd and do_pbndfind):
             mesh.pbnd_augment()
-        
+
         #_______________________________________________________________________
         # compute other properties if they are not stored in .pckl file or need 
         # to me redone anyway since focus or meshrotation has changed
@@ -179,10 +179,7 @@ def load_mesh_fesom2(
                 # if lsmask does not exist yet, compute  and augment it
                 if len(mesh.lsmask)==0:
                     mesh.compute_lsmask()
-                    if do_augmpbnd: mesh.augment_lsmask()
-                # if lsmask exist than only augment pbnd     
-                else:
-                    if do_augmpbnd: mesh.augment_lsmask()
+                if do_augmpbnd: mesh.augment_lsmask()
         else:
             if not mesh.do_earea and do_earea:
                 mesh.compute_e_area()
@@ -196,16 +193,16 @@ def load_mesh_fesom2(
                 mesh.compute_lsmask()
                 if mesh.do_augmpbnd:
                     mesh.augment_lsmask()
-        
+
         #_______________________________________________________________________
         if do_info: print(mesh.info())
-        
+
         #_______________________________________________________________________
         return(mesh)
-    
-    # (do_pickle==True and .pckl file does not exists) or (do_pickle=False)
+
     elif (do_pickle and not ( os.path.isfile(loadpicklepath)) ) or not do_pickle:
-        if do_info: print(' > load mesh from *.out files: {}'.format(meshpath))
+        if do_info:
+            print(f' > load mesh from *.out files: {meshpath}')
         #_______________________________________________________________________
         mesh = mesh_fesom2(
                     meshpath   = meshpath     , 
@@ -221,7 +218,7 @@ def load_mesh_fesom2(
                     do_nresol  = do_nresol    ,
                     do_lsmask  = do_lsmask    ,
                     do_lsmshp  = do_lsmshp)
-        
+
         #_______________________________________________________________________
         # save mypy mesh .pckl file
         # --> try 1.st to store it in the mesh in the meshfolder, will depend of 
@@ -229,23 +226,21 @@ def load_mesh_fesom2(
         if do_pickle:
             try: 
                 savepicklepath = os.path.join(meshpath,picklefname)
-                if do_info: print(' > save mesh to *.pckl in {}'.format(savepicklepath))
-                fid = open(savepicklepath, "wb")
-                pickle.dump(mesh, fid, protocol=pickleprotocol)
-                fid.close()
-            # if no permission rights for writing in meshpath folder try 
-            # cachefolder   
+                if do_info:
+                    print(f' > save mesh to *.pckl in {savepicklepath}')
+                with open(savepicklepath, "wb") as fid:
+                    pickle.dump(mesh, fid, protocol=pickleprotocol)
             except PermissionError:
                 try: 
                     savepicklepath = os.path.join(cachepath,picklefname)
                     mesh.cachepath = cachepath
-                    if do_info: print(' > save mesh to *.pckl in {}'.format(savepicklepath))
-                    fid = open(savepicklepath, "wb")
-                    pickle.dump(mesh, fid, protocol=pickleprotocol)
-                    fid.close()
+                    if do_info:
+                        print(f' > save mesh to *.pckl in {savepicklepath}')
+                    with open(savepicklepath, "wb") as fid:
+                        pickle.dump(mesh, fid, protocol=pickleprotocol)
                 except PermissionError:
-                    print(" > could not write *.pckl file in {} or {}".format(meshpath,cachepath))
-        
+                    print(f" > could not write *.pckl file in {meshpath} or {cachepath}")
+
         #_______________________________________________________________________
         return(mesh)
 

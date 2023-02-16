@@ -30,93 +30,71 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
     #___________________________________________________________________________
     # ensure that attributes are preserved  during operations with yarray 
     xr.set_options(keep_attrs=True)
-    
-    #___________________________________________________________________________
-    # Load triangle and cluster area if not given 
-    #if n_area is None or e_area is None:
-        #if do_info==True: print(' --> load triangle and cluster area from diag .nc file')
-        #fname = 'fesom.mesh.diag.nc'
-        ## check for directory with diagnostic file
-        #if   os.path.isfile( os.path.join(datapath, fname) ): 
-            #dname = datapath
-        #elif os.path.isfile( os.path.join( os.path.join(os.path.dirname(os.path.normpath(datapath)),'1/'), fname) ): 
-            #dname = os.path.join(os.path.dirname(os.path.normpath(datapath)),'1/')
-        #elif os.path.isfile( os.path.join(mesh.path,fname) ): 
-            #dname = mesh.path
-        #else:
-            #raise ValueError('could not find directory with...mesh.diag.nc file')    
-        
-        ## load diag file
-        #meshdiag = xr.open_dataset(os.path.join(dname,fname))
-        
-        ## only need cluster area from the surface since density classes dont know 
-        ## any information aboutthe bottom 
-        #if n_area is None: n_area = meshdiag['nod_area'].isel(nz=0) 
-        #if e_area is None: e_area = meshdiag['elem_area']
-    
+
     #___________________________________________________________________________
     # number of sigma2 density levels 
     ndens        = len(std_dens)
     wd, w        = np.diff(std_dens), np.zeros(ndens)
     w[0 ], w[-1] = wd[0   ]/2., wd[-1  ]/2.
-    w[1:-1]      = (wd[0:-1]+wd[1:])/2. # drho @  std_dens level boundary
+    w[1:-1] = (wd[:-1] + wd[1:]) / 2.
     weight_dens  = xr.DataArray(w, dims=["ndens"])
-    
+
     #___________________________________________________________________________
     # Load netcdf data
     if do_info==True: print(' --> create xarray dataset and load std_* data')
-    
+
     #___________________________________________________________________________
     # create xarray dataset to combine dat for dmoc computation
     data_DMOC = xr.Dataset()
-    
+
     #___________________________________________________________________________
-    # add surface transformations 
-    if (which_transf=='srf' or which_transf=='inner') or do_dflx: # add surface fluxes
-        
-        # compute combined density flux: heat_flux+freshwater_flux+restoring_flux
-        if do_dflx: 
-            data = load_data_fesom2(mesh, datapath, vname='std_heat_flux', year=year, 
-                                    descript=descript , do_info=do_info, do_ie2n=False, 
-                                    do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)
-            data['std_heat_flux'].data = data['std_heat_flux'].data +\
-                        load_data_fesom2(mesh, datapath, vname='std_frwt_flux', 
-                                         year=year, descript=descript , do_info=do_info, do_ie2n=False, 
-                                         do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)['std_frwt_flux'].data + \
-                        load_data_fesom2(mesh, datapath, vname='std_rest_flux', 
-                                         year=year, descript=descript , do_info=do_info, do_ie2n=False, 
-                                         do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)['std_rest_flux'].data
-            data      = data.rename({'std_heat_flux':'dmoc_fd'}).assign_coords({'ndens' :("ndens",std_dens)})
-            data_DMOC = xr.merge([data_DMOC, data], combine_attrs="no_conflicts")
-            data_DMOC = data_DMOC / weight_dens * 1024
-            #data_DMOC = data_DMOC / e_area
-            data_DMOC = data_DMOC / data['w_A']#--> element area
-            data_DMOC = data_DMOC.assign_attrs(data.attrs)
-            del(data)
-        
-        # compute single flux from heat_flux & freshwater_flux &restoring_flux
-        else:
-            data_DMOC = xr.merge([data_DMOC, 
-                                load_data_fesom2(mesh, datapath, vname='std_heat_flux', 
-                                                 year=year, descript=descript , do_info=do_info, do_ie2n=False, 
-                                                 do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_heat_flux':'dmoc_fh'})],
-                                combine_attrs="no_conflicts") 
-            data_DMOC = xr.merge([data_DMOC, 
-                                load_data_fesom2(mesh, datapath, vname='std_frwt_flux', 
-                                                 year=year, descript=descript , do_info=do_info, do_ie2n=False, 
-                                                 do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_frwt_flux':'dmoc_fw'})],
-                                combine_attrs="no_conflicts")   
-            data_DMOC = xr.merge([data_DMOC, 
-                                load_data_fesom2(mesh, datapath, vname='std_rest_flux', 
-                                                 year=year, descript=descript , do_info=do_info, do_ie2n=False, 
-                                                 do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_rest_flux':'dmoc_fr'})],
-                                combine_attrs="no_conflicts")   
-            data_attrs= data_DMOC.attrs # rescue attributes will get lost during multipolication
-            data_DMOC = data_DMOC.assign_coords({'ndens' :("ndens",std_dens)})
-            data_DMOC = data_DMOC / weight_dens * 1024
-            data_DMOC = data_DMOC.assign_attrs(data_attrs)
-            del(data_attrs)
-    
+    # add surface transformations
+    if (
+        which_transf in ['srf', 'inner']
+        and do_dflx
+        or which_transf not in ['srf', 'inner']
+        and do_dflx
+    ): 
+        data = load_data_fesom2(mesh, datapath, vname='std_heat_flux', year=year, 
+                                descript=descript , do_info=do_info, do_ie2n=False, 
+                                do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)
+        data['std_heat_flux'].data = data['std_heat_flux'].data +\
+                    load_data_fesom2(mesh, datapath, vname='std_frwt_flux', 
+                                     year=year, descript=descript , do_info=do_info, do_ie2n=False, 
+                                     do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)['std_frwt_flux'].data + \
+                    load_data_fesom2(mesh, datapath, vname='std_rest_flux', 
+                                     year=year, descript=descript , do_info=do_info, do_ie2n=False, 
+                                     do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute)['std_rest_flux'].data
+        data      = data.rename({'std_heat_flux':'dmoc_fd'}).assign_coords({'ndens' :("ndens",std_dens)})
+        data_DMOC = xr.merge([data_DMOC, data], combine_attrs="no_conflicts")
+        data_DMOC = data_DMOC / weight_dens * 1024
+        #data_DMOC = data_DMOC / e_area
+        data_DMOC = data_DMOC / data['w_A']#--> element area
+        data_DMOC = data_DMOC.assign_attrs(data.attrs)
+        del(data)
+
+    elif which_transf in ['srf', 'inner']:
+        data_DMOC = xr.merge([data_DMOC, 
+                            load_data_fesom2(mesh, datapath, vname='std_heat_flux', 
+                                             year=year, descript=descript , do_info=do_info, do_ie2n=False, 
+                                             do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_heat_flux':'dmoc_fh'})],
+                            combine_attrs="no_conflicts") 
+        data_DMOC = xr.merge([data_DMOC, 
+                            load_data_fesom2(mesh, datapath, vname='std_frwt_flux', 
+                                             year=year, descript=descript , do_info=do_info, do_ie2n=False, 
+                                             do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_frwt_flux':'dmoc_fw'})],
+                            combine_attrs="no_conflicts")   
+        data_DMOC = xr.merge([data_DMOC, 
+                            load_data_fesom2(mesh, datapath, vname='std_rest_flux', 
+                                             year=year, descript=descript , do_info=do_info, do_ie2n=False, 
+                                             do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_rest_flux':'dmoc_fr'})],
+                            combine_attrs="no_conflicts")   
+        data_attrs= data_DMOC.attrs # rescue attributes will get lost during multipolication
+        data_DMOC = data_DMOC.assign_coords({'ndens' :("ndens",std_dens)})
+        data_DMOC = data_DMOC / weight_dens * 1024
+        data_DMOC = data_DMOC.assign_attrs(data_attrs)
+        del(data_attrs)
+
     #___________________________________________________________________________
     # add volume trend  
     if add_trend:  
@@ -125,7 +103,7 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
                                                year=year, descript=descript , do_info=do_info, do_ie2n=False, 
                                                do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute).rename({'std_heat_flux':'dmoc_dvdt'})],
                               combine_attrs="no_conflicts")
-    
+
     #___________________________________________________________________________
     # skip this when doing diapycnal vertical velocity
     if (not do_wdiap) and (not do_dflx):
@@ -137,7 +115,7 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
         data_h = data_h.rename({'std_dens_H':'ndens_h'})
         data_h = data_h.assign_coords({'ndens' :("ndens",std_dens)})
         data_DMOC = xr.merge([data_DMOC, data_h], combine_attrs="no_conflicts")
-        
+
         if do_ndensz:
             # compute vertical density class z position from class thickness by 
             # cumulative summation 
@@ -148,38 +126,38 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
             data_DMOC = xr.merge([data_DMOC, data_z], combine_attrs="no_conflicts")
             del(data_z)
         del(data_h)
-        
+
         #_______________________________________________________________________
         # load sigma2 density on nodes 
         if do_sgm2z: 
             data_sigma2 = load_data_fesom2(mesh, datapath, vname='density_dMOC', 
                         year=year, descript=descript , do_info=do_info, 
                         do_ie2n=False, do_tarithm=do_tarithm, do_zarithm=None, do_nan=False, do_compute=do_compute)
-            
+
             data_sigma2 = data_sigma2.rename({'density_dMOC':'nz_rho'})
-            
+
             # make land sea mask nan
             data_sigma2 = data_sigma2.where(data_sigma2!=0.0)
-            
+
             # have to do it via assign otherwise cant write [elem x ndens] into [nod2d x ndens] 
             # array an save the attributes in the same time
             if 'time' in list(data_sigma2.dims):
                 data_sigma2  = data_sigma2.assign( nz_rho=data_sigma2[list(data_sigma2.keys())[0]][:, xr.DataArray(mesh.e_i, dims=["elem",'n3']), :].mean(dim="n3", keep_attrs=True) )
             else:
                 data_sigma2  = data_sigma2.assign( nz_rho=data_sigma2[list(data_sigma2.keys())[0]][xr.DataArray(mesh.e_i, dims=["elem",'n3']),:].mean(dim="n3", keep_attrs=True) )
-            
+
             # be sure it properly chunked
             if do_compute==False: data_sigma2 = data_sigma2.chunk({'elem':1e4, 'nod2':1e4})
-                
+
             # drop nod2 dimensional coordiantes become later replaced with elemental coordinates
             data_sigma2  = data_sigma2.drop(['nodi','nodiz','lon','lat','w_A'])
-            
+
             data_sigma2 = data_sigma2.where(np.isnan(data_sigma2.nz_rho)==False,0.0)
-            
+
             # add to Dataset
             data_DMOC = xr.merge([data_DMOC, data_sigma2], combine_attrs="no_conflicts")
             del(data_sigma2)
-    
+
     #___________________________________________________________________________
     if (not do_dflx):
         # add divergence of density classes --> diapycnal velocity
@@ -187,14 +165,14 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
                                      year=year, descript=descript , do_info=do_info, 
                                      do_ie2n=False, do_tarithm=do_tarithm, do_nan=False, do_compute=do_compute) 
         data_div = data_div.rename({'std_dens_DIV':'dmoc'})
-        
+
         data_div  = data_div.assign_coords({'ndens' :("ndens",std_dens)})
         # save global attributes into allocated DMOC dataset
         #data_DMOC = data_DMOC.assign_attrs(data_div.attrs)
-        
+
         # integrated divergence below isopcnal  --> size: [nod2d x ndens] --> size: [elem x ndens]
         data_div  = data_div/data_div['w_A'] # --> vertice area
-        
+
         # skip this when doing diapycnal vertical velocity
         if not do_wdiap:
             # have to do it via assign otherwise cant write [elem x ndens] into [nod2d x ndens] 
@@ -203,21 +181,21 @@ def load_dmoc_data(mesh, datapath, descript, year, which_transf, std_dens, #n_ar
                 data_div  = data_div.assign( dmoc=data_div[list(data_div.keys())[0]][:, xr.DataArray(mesh.e_i, dims=["elem",'n3']), :].mean(dim="n3", keep_attrs=True) )
             else:
                 data_div  = data_div.assign( dmoc=data_div[list(data_div.keys())[0]][xr.DataArray(mesh.e_i, dims=["elem",'n3']),:].mean(dim="n3", keep_attrs=True) )
-            
+
             if do_compute==False: data_div = data_div.chunk({'elem':1e4, 'nod2':1e4})
-            
+
             # drop nod2 dimensional coordiantes become later replaced with elemental coordinates
             data_div  = data_div.drop(['nodi','lon','lat','w_A'])
             #data_div  = data_div*e_area
             data_div  = data_div*data_DMOC['w_A']# --> element area
-        
+
         data_DMOC = xr.merge([data_DMOC, data_div], combine_attrs="no_conflicts")  
         del(data_div)
-    
+
     #___________________________________________________________________________
     # drop unnecessary coordinates
-    if (not do_wdiap):
-        if 'lon' in list(data_DMOC.coords): data_DMOC = data_DMOC.drop(['lon'])
+    if (not do_wdiap) and 'lon' in list(data_DMOC.coords):
+        data_DMOC = data_DMOC.drop(['lon'])
     if 'elemi' in list(data_DMOC.coords): data_DMOC = data_DMOC.drop(['elemi'])
     if 'nodi'  in list(data_DMOC.coords): data_DMOC = data_DMOC.drop(['nodi'])
     if 'nzi'   in list(data_DMOC.coords): data_DMOC = data_DMOC.drop(['nzi'])
@@ -237,14 +215,14 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
     # number of sigma2 density levels 
     std_dens     = data_dMOC['ndens'].values
     ndens        = len(std_dens)
-    
+
     #___________________________________________________________________________
     # compute index for basin domain limitation
     idxin     = calc_basindomain_fast(mesh, which_moc=which_moc, do_onelem=True, exclude_meditoce=exclude_meditoce)
 
     # reduce to dMOC data to basin domain
     data_dMOC = data_dMOC.isel(elem=idxin)
-    
+
     # check basin selection 
     if do_checkbasin:
         from matplotlib.tri import Triangulation
@@ -254,50 +232,42 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
         plt.triplot(tri.x, tri.y, tri.triangles[ np.hstack((idxin[mesh.e_pbnd_0], idxin[mesh.e_pbnd_a])) ,:], color='r')
         plt.title('Basin selection')
         plt.show()
-        
+
     #___________________________________________________________________________
     # prepare  weights for area weighted mean over the elements for all density 
     # classes and depth levels (in case nz_rho is loaded)
-    edims  = dict()
-    dimsrt = list()
+    edims = {}
+    dimsrt = []
     dtime='None'
     if 'time' in list(data_dMOC.dims): 
         edims['time'], dtime = data_dMOC['time'].data, 'time'
     edims['ndens'] = data_dMOC['ndens'].data
     delem, ddens = 'elem', 'ndens'
-    
+
     # expand by ndens dimension
     data_dMOC['ndens_w_A'] = data_dMOC['w_A'].expand_dims(edims).transpose(dtime, delem, ddens, missing_dims='ignore')
-    #if do_compute==False: 
-        ##data_dMOC['ndens_w_A'] = data_dMOC['ndens_w_A'].chunk(data_dMOC.chunksizes['elem'])
-        #data_dMOC['ndens_w_A'] = data_dMOC['ndens_w_A'].unify_chunks()
-        
     # non-existing density classes (ndens_h==0) --> NaN
     data_dMOC['ndens_w_A'] = data_dMOC['ndens_w_A'].where(data_dMOC['ndens_h']!=0.0)
-    
+
     if 'nz_rho' in list(data_dMOC.keys()):
-        edims = dict()
+        edims = {}
         if 'time' in list(data_dMOC.dims): edims['time'] = data_dMOC['time'].data
         edims['nz1'] = data_dMOC['nz1'].data
         # expand by nz1 dimension
         data_dMOC['nz_w_A'   ] = data_dMOC['w_A'].expand_dims(edims).transpose(dtime, delem, ddensm, missing_dims='ignore')
-        #if do_compute==False: 
-            ##data_dMOC['nz_w_A'] = data_dMOC['nz_w_A'].chunk(data_dMOC.chunksizes['elem'])
-            #data_dMOC['nz_w_A'] = data_dMOC['nz_w_A'].unify_chunks()
-            
         # land sea mask --> NaN
         data_dMOC['nz_w_A'   ] = data_dMOC['nz_w_A'].where(data_dMOC['nz_rho']!=0.0)
-    
+
     if do_compute==False: 
         data_dMOC = data_dMOC.unify_chunks()
-    
+
     #___________________________________________________________________________
     # scale surface density fluxes are already area weighted for zonal 
     # integration
-    if 'dmoc_fh'   in list(data_dMOC.keys()): data_dMOC['dmoc_fh'  ] = data_dMOC['dmoc_fh'  ] * 1.0e-6 
+    if 'dmoc_fh'   in list(data_dMOC.keys()): data_dMOC['dmoc_fh'  ] = data_dMOC['dmoc_fh'  ] * 1.0e-6
     if 'dmoc_fw'   in list(data_dMOC.keys()): data_dMOC['dmoc_fw'  ] = data_dMOC['dmoc_fw'  ] * 1.0e-6
-    if 'dmoc_fr'   in list(data_dMOC.keys()): data_dMOC['dmoc_fr'  ] = data_dMOC['dmoc_fr'  ] * 1.0e-6 
-    if 'dmoc_fd'   in list(data_dMOC.keys()): data_dMOC['dmoc_fd'  ] = data_dMOC['dmoc_fd'  ] * 1.0e-6     
+    if 'dmoc_fr'   in list(data_dMOC.keys()): data_dMOC['dmoc_fr'  ] = data_dMOC['dmoc_fr'  ] * 1.0e-6
+    if 'dmoc_fd'   in list(data_dMOC.keys()): data_dMOC['dmoc_fd'  ] = data_dMOC['dmoc_fd'  ] * 1.0e-6
     if 'dmoc_dvdt' in list(data_dMOC.keys()): data_dMOC['dmoc_dvdt'] = data_dMOC['dmoc_dvdt'] * 1.0e-6
     if 'dmoc'      in list(data_dMOC.keys()): data_dMOC['dmoc'     ] = data_dMOC['dmoc'     ] * 1.0e-6
 
@@ -305,19 +275,19 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
     data_dMOC['ndens_h'].data = data_dMOC['ndens_h'].data*data_dMOC['ndens_w_A'].data
     if 'ndens_z'   in list(data_dMOC.keys()): data_dMOC['ndens_z'  ].data = data_dMOC['ndens_z'].data*data_dMOC['ndens_w_A'].data
     if 'nz_rho'    in list(data_dMOC.keys()): data_dMOC['nz_rho'   ].data = data_dMOC['nz_rho'].data*data_dMOC['nz_w_A'].data
-    
+
     #___________________________________________________________________________
     # create meridional bins --> this trick is from Nils Brückemann (ICON)
     lat_bin = xr.DataArray(data=np.round(data_dMOC['lat'].data/dlat)*dlat, dims='elem', name='lat')
-    
+
     #___________________________________________________________________________
     # group data by bins --> this trick is from Nils Brückemann (ICON)
     data_dMOC    = data_dMOC.groupby(lat_bin)
-    
+
     # zonal sumation/integration over bins
     data_dMOC    = data_dMOC.sum(skipna=True)#.chunk({'lat',1000})
     #data_dMOC    = data_dMOC.chunk({'lat': data.sizes['lat']})
-    
+
     #___________________________________________________________________________
     # compute area weighted zonal mean 
     np.seterr(invalid='ignore')
@@ -328,37 +298,35 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
     # drop  now total area in bins over depth level and density class
     if 'ndens_w_A'in list(data_dMOC.keys()): data_dMOC = data_dMOC.drop(['ndens_w_A'])
     if 'nz_w_A'   in list(data_dMOC.keys()): data_dMOC = data_dMOC.drop(['nz_w_A'])
-    
-    # transpose data from [lat x ndens] --> [ndens x lat]
-    dtime='None'
-    if 'time' in list(data_dMOC.dims): dtime = 'time'
+
+    dtime = 'time' if 'time' in list(data_dMOC.dims) else 'None'
     dlat, ddens = 'lat', 'ndens'
     data_dMOC = data_dMOC.transpose(dtime, ddens, dlat, missing_dims='ignore')
-    
+
     #___________________________________________________________________________
     # exclude variables that should not be cumulatively integrated 
     var_list = list(data_dMOC.keys())
     if 'ndens_h' in var_list: var_list.remove('ndens_h')
     if 'ndens_z' in var_list: var_list.remove('ndens_z')
     if 'nz_rho'  in var_list: var_list.remove('nz_rho' )   
-    
+
     #___________________________________________________________________________
     # cumulative sum over latitudes
     if do_info==True: print(' --> do cumsum over latitudes')
     for var in var_list:
         data_dMOC[ var ] = -data_dMOC[ var ].reindex(lat=data_dMOC['lat'][::-1]).cumsum(dim='lat', skipna=True).reindex(lat=data_dMOC['lat'])
-    
+
     #___________________________________________________________________________
     # cumulative sum over depth 
     if do_info==True: print(' --> do cumsum over depth (bottom-->top)')
     data_dMOC[ 'dmoc' ] = data_dMOC[ 'dmoc' ].reindex(ndens=data_dMOC['ndens'][::-1]).cumsum(dim='ndens', skipna=True).reindex(ndens=data_dMOC['ndens'])
-    
+
     #___________________________________________________________________________
     # compute z-position (z) from (f) density class thickness (h)
     data_dMOC[ 'ndens_zfh' ] = data_dMOC[ 'ndens_h' ].cumsum(dim='ndens', skipna=True)
     data_dMOC[ 'ndens_zfh' ] = data_dMOC[ 'ndens_zfh' ].roll({'ndens':1})
     data_dMOC[ 'ndens_zfh' ].loc[dict(ndens=data_dMOC['ndens'][0])]=0.0
-    
+
     #___________________________________________________________________________
     # write proper variable attributes for long_name and units 
     if 'dmoc_fh'   in list(data_dMOC.keys()): 
@@ -384,14 +352,14 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
         data_dMOC['ndens_h'  ] = data_dMOC['ndens_h'  ].assign_attrs(attr_list)
     if 'ndens_zfh'   in list(data_dMOC.keys()): 
         attr_list = dict({'long_name':'Density class z position', 'units':'m'})
-        data_dMOC['ndens_zfh'  ] = data_dMOC['ndens_zfh'  ].assign_attrs(attr_list)    
+        data_dMOC['ndens_zfh'  ] = data_dMOC['ndens_zfh'  ].assign_attrs(attr_list)
     if 'ndens_z'   in list(data_dMOC.keys()): 
         attr_list = dict({'long_name':'Density class z position', 'units':'m'})
         data_dMOC['ndens_z'  ] = data_dMOC['ndens_z'  ].assign_attrs(attr_list)
     if 'nz_rho'    in list(data_dMOC.keys()): 
         attr_list = dict({'long_name':'sigma2 density in zcoord', 'units':'kg/m³'})
         data_dMOC['nz_rho'   ] = data_dMOC['nz_rho'   ].assign_attrs(attr_list)
-    
+
     #___________________________________________________________________________
     # compute depth of max and mean bottom topography
     elemz     = xr.DataArray(np.abs(mesh.zlev[mesh.e_iz]), dims=['elem'])
@@ -399,11 +367,11 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
     elemz     = elemz.isel(elem=idxin)
     elemz_m   = elemz.groupby(lat_bin).max()
     data_dMOC = data_dMOC.assign_coords(botmax =elemz_m)
-    
+
     elemz_m   = elemz.groupby(lat_bin).mean()
     data_dMOC = data_dMOC.assign_coords(botmean=elemz_m)
     del (elemz, elemz_m)
-    
+
     #___________________________________________________________________________
     # compute index of max mean bottom topography
     elemiz    = xr.DataArray(mesh.e_iz, dims=['elem'])
@@ -411,10 +379,10 @@ def calc_dmoc(mesh, data_dMOC, dlat=1.0, which_moc='gmoc', do_info=True, do_chec
     elemiz    = elemiz.groupby(lat_bin).max()
     data_dMOC = data_dMOC.assign_coords(botmaxi=elemiz)
     del(elemiz)
-    
+
     #___________________________________________________________________________
     if do_compute: data_dMOC = data_dMOC.compute()
-    
+
     #___________________________________________________________________________
     return(data_dMOC)
 
